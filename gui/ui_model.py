@@ -10,10 +10,13 @@ from dataloader.image_folder import make_dataset
 from model import create_model
 from util.visualizer import Visualizer
 
+from data_science_tools.d3 import ColoredMesh, NearmapDSM
+import trimesh.visual
+
 
 class ui_model(QtWidgets.QWidget, Ui_Form):
     shape = 'line'
-    CurrentWidth = 1
+    CurrentWidth = 15
 
     def __init__(self, opt):
         super(ui_model, self).__init__()
@@ -23,10 +26,10 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
         self.show_result_flag = False
         self.opt.loadSize = [256, 256]
         self.visualizer = Visualizer(opt)
-        self.model_name = ['celeba_center', 'paris_center', 'imagenet_center', 'place2_center',
+        self.model_name = ['cape_1', 'celeba_center', 'paris_center', 'imagenet_center', 'place2_center',
                            'celeba_random', 'paris_random','imagenet_random', 'place2_random']
-        self.img_root = './datasets/'
-        self.img_files = ['celeba-hq', 'paris', 'imagenet', 'place2']
+        self.img_root = '/home/giacomov/data/hackathon_July2020/data/'
+        self.img_files = ['processed', 'celeba-hq', 'paris', 'imagenet', 'place2']
         self.graphicsView_2.setMaximumSize(self.opt.loadSize[0]+30, self.opt.loadSize[1]+30)
 
         # show logo
@@ -45,7 +48,7 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
         self.pushButton_2.clicked.connect(self.random_image)
 
         # save result
-        self.pushButton_4.clicked.connect(self.save_result)
+        self.pushButton_4.clicked.connect(self.save_and_display_mesh)
 
         # draw/erasure the mask
         self.radioButton.toggled.connect(lambda: self.draw_mask('line'))
@@ -66,7 +69,7 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
         value = self.comboBox.currentIndex()
         img = Image.open(fname).convert('RGB')
         self.img_original = img.resize(self.opt.loadSize)
-        if value > 4:
+        if True:
             self.img = self.img_original
         else:
             self.img = self.img_original
@@ -80,7 +83,8 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
         """Show the results and original image"""
         if self.show_result_flag:
             self.show_result_flag = False
-            new_pil_image = Image.fromarray(util.tensor2im(self.img_out.detach()))
+            img_out = util.tensor2im(self.img_out.detach())
+            new_pil_image = Image.fromarray(img_out)
             new_qt_image = ImageQt.ImageQt(new_pil_image)
         else:
             self.show_result_flag = True
@@ -93,19 +97,12 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
     def show_logo(self):
         """Show the logo of NTU and BTC"""
         img = QtWidgets.QLabel(self)
-        img.setGeometry(650, 20, 140, 50)
+        img.setGeometry(650, 20, 256, 50)
         # read images
-        pixmap = QtGui.QPixmap("./gui/logo/NTU_logo.jpg")
-        pixmap = pixmap.scaled(140, 140, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        pixmap = QtGui.QPixmap("./gui/logo/cape.png")
+        pixmap = pixmap.scaled(256, 256, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
         img.setPixmap(pixmap)
         img.show()
-        img1 = QtWidgets.QLabel(self)
-        img1.setGeometry(800, 20, 70, 50)
-        # read images
-        pixmap1 = QtGui.QPixmap("./gui/logo/BTC_logo.png")
-        pixmap1 = pixmap1.scaled(70, 70, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-        img1.setPixmap(pixmap1)
-        img1.show()
 
     def load_model(self):
         """Load different kind models for different datasets and mask types"""
@@ -138,7 +135,7 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
         self.fname = image_paths[item]
         self.showImage(self.fname)
 
-    def save_result(self):
+    def save_and_display_mesh(self):
         """Save the results to the disk"""
         util.mkdir(self.opt.results_dir)
         img_name = self.fname.split('/')[-1]
@@ -154,6 +151,8 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
         mask_name = '%s_%s_%d_%s' % ('mask', data_name, self.PaintPanel.iteration, img_name)
         mask_path = os.path.join(self.opt.results_dir, mask_name)
         img_mask = util.tensor2im(self.img_m)
+        # Set mask to black
+        img_mask[img_mask == (127, 127, 127)] = 0
         util.save_image(img_mask, mask_path)
 
         # save the results
@@ -161,6 +160,28 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
         result_path = os.path.join(self.opt.results_dir, result_name)
         img_result = util.tensor2im(self.img_out)
         util.save_image(img_result, result_path)
+
+        # Create and show 3d mesh
+
+        # skimage.io.imsave("__input.png", img_mask)
+        # skimage.io.imsave("__model_prediction.png", img_result)
+
+        inp = NearmapDSM.read(mask_path)
+        out = NearmapDSM.read(result_path)
+
+        cm_inp = ColoredMesh.from_dem(inp, max_slope=50)
+        cm_out = ColoredMesh.from_dem(out, max_slope=50)
+
+        cm_inp.save(f"{self.opt.results_dir}/input.ply")
+        cm_out.save(f"{self.opt.results_dir}/model_prediction.ply")
+
+        for facet in cm_out.mesh.facets:
+            cm_out.mesh.visual.face_colors[facet] = (255, 255, 255, 255)
+
+        scene = cm_out.mesh.scene()
+        scene.add_geometry(cm_inp.mesh)
+        scene.show(resolution=(400, 400))
+
 
     def new_painter(self, image=None):
         """Build a painter to load and process the image"""
@@ -200,7 +221,7 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
         # transform the image to the tensor
         img = self.transform(self.img)
         value = self.comboBox.currentIndex()
-        if value > 4:
+        if True:
             mask = torch.autograd.Variable(self.transform(pil_im)).unsqueeze(0)
             # mask from the random mask
             # mask = Image.open(self.mname)
@@ -223,23 +244,54 @@ class ui_model(QtWidgets.QWidget, Ui_Form):
     def fill_mask(self):
         """Forward to get the generation results"""
         img_m, img_c, img_truth, mask = self.set_input()
+
+        max_score = 0.0
+
+        results = {'score': [], 'image': []}
+
         if self.PaintPanel.iteration < 100:
-            with torch.no_grad():
-                # encoder process
-                distributions, f = self.model.net_E(img_m)
-                q_distribution = torch.distributions.Normal(distributions[-1][0], distributions[-1][1])
-                #q_distribution = torch.distributions.Normal( torch.zeros_like(distributions[-1][0]), torch.ones_like(distributions[-1][1]))
-                z = q_distribution.sample()
 
-                # decoder process
-                scale_mask = task.scale_pyramid(mask, 4)
-                self.img_g, self.atten = self.model.net_G(z, f_m=f[-1], f_e=f[2], mask=scale_mask[0].chunk(3, dim=1)[0])
-                self.img_out = (1 - mask) * self.img_g[-1].detach() + mask * img_m
+            for i in range(50):
 
-                # get score
-                score =self.model.net_D(self.img_out).mean()
-                self.label_6.setText(str(round(score.item(),3)))
-                self.PaintPanel.iteration += 1
+                with torch.no_grad():
+                    # encoder process
+                    distributions, f = self.model.net_E(img_m)
+                    q_distribution = torch.distributions.Normal(distributions[-1][0], distributions[-1][1])
+                    #q_distribution = torch.distributions.Normal( torch.zeros_like(distributions[-1][0]), torch.ones_like(distributions[-1][1]))
+                    z = q_distribution.sample()
+
+                    # decoder process
+                    scale_mask = task.scale_pyramid(mask, 4)
+                    img_g, atten = self.model.net_G(z, f_m=f[-1], f_e=f[2], mask=scale_mask[0].chunk(3, dim=1)[0])
+                    img_out = (1 - mask) * img_g[-1].detach() + mask * img_m
+
+                    # get score
+                    score = self.model.net_D(img_out).mean()
+
+                    if score > max_score:
+
+                        self.img_g = img_g
+                        self.atten = atten
+                        self.img_out = img_out
+
+                        max_score = score
+
+                    results['score'].append(score)
+                    results['image'].append(util.tensor2im(img_out.detach()))
+
+            # Extract 10 images to show as sample
+            samples = [results['image'][i] for i in np.random.randint(0, len(results['score']), 10)]
+
+            for i, s in enumerate(samples):
+
+                new_pil_image = Image.fromarray(s)
+                new_qt_image = ImageQt.ImageQt(new_pil_image)
+                pixmap = QtGui.QPixmap.fromImage(new_qt_image)
+                current_label = getattr(self, f"sample_{i}")
+                current_label.setPixmap(pixmap.scaled(178, 178))
+
+            self.label_6.setText(str(round(max_score.item(), 3)))
+            self.PaintPanel.iteration += 1
 
         self.show_result_flag = True
         self.show_result()
