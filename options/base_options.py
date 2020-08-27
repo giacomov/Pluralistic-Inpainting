@@ -7,7 +7,7 @@ from util import util
 
 class BaseOptions():
     def __init__(self):
-        self.parser = argparse.ArgumentParser()
+        self.parser = argparse.ArgumentParser("pluralistic")
         self.initialized = False
 
     def initialize(self, parser):
@@ -54,7 +54,7 @@ class BaseOptions():
         # modify the options for different models
         model_option_set = model.get_option_setter(opt.model)
         parser = model_option_set(parser, self.isTrain)
-        opt = parser.parse_args()
+        opt, _ = parser.parse_known_args()
 
         return opt
 
@@ -64,7 +64,7 @@ class BaseOptions():
         opt = self.gather_options()
         opt.isTrain = self.isTrain
 
-        self.print_options(opt)
+        # self.print_options(opt)
 
         # set gpu ids
         str_ids = opt.gpu_ids.split(',')

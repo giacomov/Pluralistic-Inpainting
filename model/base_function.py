@@ -90,7 +90,7 @@ def print_network(net):
 
 def init_net(net, init_type='normal', activation='relu', gpu_ids=[]):
     """print the network structure and initial the network"""
-    print_network(net)
+    # print_network(net)
 
     if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
